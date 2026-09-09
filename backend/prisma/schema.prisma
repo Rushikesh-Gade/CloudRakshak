@@ -1,0 +1,109 @@
+// CloudRakshak — Prisma Database Schema
+//
+// Three tables:
+//   Account    — a connected cloud account (AWS/Azure/GCP)
+//   DailyCost  — one row per service per day per account (the core billing data)
+//   AlertEvent — a detected anomaly (spike or idle resource) ready to be sent
+//
+// Why this structure?
+//   - Account is separate so we can support multiple AWS accounts later
+//   - DailyCost mirrors the AWS Cost Explorer response shape exactly
+//   - AlertEvent decouples detection from delivery (Telegram/WhatsApp sends happen async)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Account ──────────────────────────────────────────────────────────────────
+// Represents one connected cloud account.
+// For now we'll have one row (the mock/demo account).
+// In Feature 6 this will store the real AWS account ID and IAM role ARN.
+
+model Account {
+  id           String   @id @default(cuid())
+  provider     String   // "aws" | "azure" | "gcp"
+  accountId    String   // e.g. "123456789012" for AWS
+  accountAlias String?  // friendly name, e.g. "my-startup"
+  roleArn      String?  // AWS IAM role ARN for STS AssumeRole (Feature 6)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  dailyCosts   DailyCost[]
+  alertEvents  AlertEvent[]
+
+  @@unique([provider, accountId])  // one row per account per provider
+  @@map("accounts")
+}
+
+// ─── DailyCost ────────────────────────────────────────────────────────────────
+// One row = cost of one AWS service on one day for one account.
+// This is the normalised form of the Cost Explorer "Groups" array.
+
+model DailyCost {
+  id             String   @id @default(cuid())
+  accountId      String   // FK → Account.id
+  date           DateTime @db.Date  // the day this record is for (no time component)
+  provider       String   // "aws" | "azure" | "gcp"
+  serviceName    String   // e.g. "Amazon EC2"
+  serviceKey     String   // short slug, e.g. "ec2" (for easy filtering)
+  costUsd        Float    // cost in USD (6 decimal precision from Cost Explorer)
+  costInr        Float    // costUsd × USD_TO_INR_RATE at time of ingestion
+  usageQuantity  Float    @default(0)  // from UsageQuantity metric (0 = idle signal)
+  currency       String   @default("USD")
+  isEstimated    Boolean  @default(false)  // true for the last ~3 days (Cost Explorer flag)
+  resourceId     String?  // ARN of the specific resource (if available)
+  createdAt      DateTime @default(now())
+
+  // Relation
+  account        Account  @relation(fields: [accountId], references: [id])
+
+  // One record per service per day per account — no duplicates on re-ingestion
+  @@unique([accountId, date, serviceName])
+  @@index([accountId, date])   // fast queries for "give me all costs for account X between dates Y and Z"
+  @@index([date])
+  @@map("daily_costs")
+}
+
+// ─── AlertEvent ───────────────────────────────────────────────────────────────
+// One row = one detected anomaly.
+// Created by the anomaly detector (Feature 3), consumed by the alert sender (Feature 4).
+
+model AlertEvent {
+  id           String      @id @default(cuid())
+  accountId    String      // FK → Account.id
+  type         AlertType   // SPEND_SPIKE | IDLE_RESOURCE
+  severity     Severity    // LOW | MEDIUM | HIGH
+  serviceName  String      // which service triggered the alert
+  resourceId   String?     // specific resource ARN if available
+  description  String      // plain-language message, e.g. "EC2 has been idle for 6 days, costing ₹340"
+  detectedAt   DateTime    @default(now())
+  sentAt       DateTime?   // null = not yet sent to Telegram/WhatsApp
+  resolvedAt   DateTime?   // null = still active
+  metadata     Json?       // extra data (spike %, days idle, etc.) for the dashboard
+
+  // Relation
+  account      Account     @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, detectedAt])
+  @@index([sentAt])   // quick query: "give me all unsent alerts"
+  @@map("alert_events")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum AlertType {
+  SPEND_SPIKE     // day-over-day cost increase above threshold
+  IDLE_RESOURCE   // near-zero usage for N consecutive days
+}
+
+enum Severity {
+  LOW     // informational
+  MEDIUM  // worth investigating
+  HIGH    // act now — significant cost impact
+}

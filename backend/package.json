@@ -6,7 +6,11 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "generate-mock": "node scripts/generateMockData.js"
+    "generate-mock": "node scripts/generateMockData.js",
+    "ingest-mock": "node src/ingestion/ingestMockData.js",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:generate": "prisma generate"
   },
   "dependencies": {
     "@aws-sdk/client-cost-explorer": "^3.658.0",
