@@ -1,0 +1,27 @@
+{
+  "name": "cloudrakshak-backend",
+  "version": "1.0.0",
+  "description": "Backend for CloudRakshak - multi-cloud cost monitoring and alerting",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "generate-mock": "node scripts/generateMockData.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cost-explorer": "^3.658.0",
+    "@aws-sdk/client-sts": "^3.658.0",
+    "@prisma/client": "^5.19.0",
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7",
+    "prisma": "^5.19.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
