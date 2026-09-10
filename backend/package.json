@@ -8,6 +8,7 @@
     "dev": "nodemon src/server.js",
     "generate-mock": "node scripts/generateMockData.js",
     "ingest-mock": "node src/ingestion/ingestMockData.js",
+    "detect": "node src/anomaly/runDetectors.js",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:generate": "prisma generate"
